@@ -2612,7 +2612,9 @@ public class MusicPlaybackService extends Service implements IPluginAccessResult
          *            you want to play
          */
         public void setNextDataSource(final String path) {
-            mCurrentMediaPlayer.setNextMediaPlayer(null);
+            if (ApolloUtils.hasJellyBean()) {
+                mCurrentMediaPlayer.setNextMediaPlayer(null);
+            }
             if (mNextMediaPlayer != null) {
                 mNextMediaPlayer.release();
                 mNextMediaPlayer = null;
@@ -2623,7 +2625,8 @@ public class MusicPlaybackService extends Service implements IPluginAccessResult
             mNextMediaPlayer = new MediaPlayer();
             mNextMediaPlayer.setWakeMode(mService.get(), PowerManager.PARTIAL_WAKE_LOCK);
             mNextMediaPlayer.setAudioSessionId(getAudioSessionId());
-            if (setDataSourceImpl(mNextMediaPlayer, path)) {
+            if (setDataSourceImpl(mNextMediaPlayer, path) &&
+                ApolloUtils.hasJellyBean()) {
                 mCurrentMediaPlayer.setNextMediaPlayer(mNextMediaPlayer);
             } else {
                 if (mNextMediaPlayer != null) {
