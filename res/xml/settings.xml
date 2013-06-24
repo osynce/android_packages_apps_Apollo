@@ -33,6 +33,7 @@
             android:defaultValue="true"
             android:key="lockscreen_controls"
             android:title="@string/settings_use_lockscreen_controls" />
+        <CheckBoxPreference android:defaultValue="false" android:key="ant_remote" android:title="@string/settings_use_ant_remote"/>
     </PreferenceCategory>
     <!-- Data catetory -->
     <PreferenceCategory android:title="@string/settings_data_category" >

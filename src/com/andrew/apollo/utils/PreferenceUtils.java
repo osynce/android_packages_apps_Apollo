@@ -77,6 +77,9 @@ public final class PreferenceUtils {
 
     // Enables lock screen controls on Honeycomb and above
     public static final String USE_LOCKSREEN_CONTROLS = "lockscreen_controls";
+    
+    // Enables ANT+ Remote
+    public static final String USE_ANT_REMOTE = "ant_remote";
 
     // Key used to set the overall theme color
     public static final String DEFAULT_THEME_COLOR = "default_theme_color";
@@ -192,6 +195,14 @@ public final class PreferenceUtils {
      */
     public final boolean enableLockscreenControls() {
         return mPreferences.getBoolean(USE_LOCKSREEN_CONTROLS, true);
+    }
+    
+    /**
+     * @return True if the user has checked to use the ANT+ remote, false
+     *         otherwise.
+     */
+    public final boolean enableAntRemote() {
+        return mPreferences.getBoolean(USE_ANT_REMOTE, false);
     }
 
     /**

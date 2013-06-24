@@ -57,6 +57,14 @@ import com.andrew.apollo.utils.Lists;
 import com.andrew.apollo.utils.MusicUtils;
 import com.andrew.apollo.utils.PreferenceUtils;
 
+import android.widget.Toast;
+import com.dsi.ant.plugins.AntPluginMsgDefines;
+import com.dsi.ant.plugins.AntPluginPcc.IDeviceStateChangeReceiver;
+import com.dsi.ant.plugins.AntPluginPcc.IPluginAccessResultReceiver;
+import com.dsi.ant.plugins.antplus.pcc.AntPlusControlsPcc;
+import com.dsi.ant.plugins.antplus.pcc.AntPlusControlsPcc.AudioDeviceCapabilities;
+import com.dsi.ant.plugins.antplus.pcc.AntPlusControlsPcc.IAudioCommandReceiver;
+
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.util.LinkedList;
@@ -68,7 +76,7 @@ import java.util.TreeSet;
  * and when the user moves Apollo into the background.
  */
 @SuppressLint("NewApi")
-public class MusicPlaybackService extends Service {
+public class MusicPlaybackService extends Service implements IPluginAccessResultReceiver<AntPlusControlsPcc>, IDeviceStateChangeReceiver, IAudioCommandReceiver {
     /**
      * Indicates that the music has paused or resumed
      */
@@ -178,6 +186,15 @@ public class MusicPlaybackService extends Service {
 
     private static final int IDCOLIDX = 0;
 
+    /**
+     * Called to toggle the ANT+ Client
+     */
+    public static final String SETUP_ANT = "com.andrew.apollo.setupant";
+    /*
+     * Indicates that the setup of ant failed
+     */
+    public static final String SETUP_ANT_FAILED = "com.andrew.apollo.setupantfailed";
+    
     /**
      * Moves a list to the front of the queue
      */
@@ -388,9 +405,24 @@ public class MusicPlaybackService extends Service {
     /**
      * Enables the remote control client
      */
-    private boolean mEnableLockscreenControls;
+    private boolean mEnableLockscreenControls;    
 
     private ComponentName mMediaButtonReceiverComponent;
+
+    /**
+     * ANT+ Remote Support
+     */
+    AntPlusControlsPcc mAntClient = null;
+    /*
+     * Enables the ANT+ Client
+     */
+    private boolean mEnableAntRemote;
+    
+    /*
+     * ANT+ Audio Capabilities
+     */
+    AudioDeviceCapabilities capabilities = new AudioDeviceCapabilities();
+    int AntDeviceID = 0; // Set to Zero for the ANT plugin to automatically generate the device ID
 
     // We use this to distinguish between different cards when saving/restoring
     // playlists
@@ -553,6 +585,13 @@ public class MusicPlaybackService extends Service {
         filter.addAction(SHUFFLE_ACTION);
         // Attach the broadcast listener
         registerReceiver(mIntentReceiver, filter);
+        
+        // Initialize ANT Client
+        mEnableAntRemote = PreferenceUtils.getInstance(this).enableAntRemote();
+        setupAntControlsClient();
+        //Configure ANT+ Remote capabilities
+        capabilities.customRepeatModeSupport = false;
+        capabilities.customShuffleModeSupport = false;
 
         // Initialize the wake lock
         final PowerManager powerManager = (PowerManager)getSystemService(Context.POWER_SERVICE);
@@ -592,6 +631,125 @@ public class MusicPlaybackService extends Service {
             mRemoteControlClient.setTransportControlFlags(flags);
         }
     }
+    
+    private void setupAntControlsClient()
+    {
+    	if(mAntClient != null)
+    	{
+    		mAntClient.releaseAccess();
+    		mAntClient = null;
+    	}
+
+    	if (mEnableAntRemote)
+    	  AntPlusControlsPcc.requestAccessAudioMode(this,this,this,this, capabilities, AntDeviceID);
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see com.dsi.ant.plugins.AntPluginPcc.IPluginAccessResultReceiver#onResultReceived(com.dsi.ant.plugins.AntPluginPcc, int, int)
+     */
+    public void onResultReceived(AntPlusControlsPcc result, int resultCode, int initialDeviceStateCode)
+    {
+    	switch(resultCode)
+    	{
+    	case AntPluginMsgDefines.MSG_REQACC_RESULT_whatSUCCESS:
+    		mAntClient = result;
+    		break;
+    	case AntPluginMsgDefines.MSG_REQACC_RESULT_whatDEVICEALREADYINUSE:
+    		Toast.makeText(this, "ANT+ channel already in use!", Toast.LENGTH_SHORT).show();
+    		break;
+    	case AntPluginMsgDefines.MSG_REQACC_RESULT_whatCHANNELNOTAVAILABLE:
+    		Toast.makeText(this, "ANT+ channel not available", Toast.LENGTH_SHORT).show();
+    		break;
+    	case AntPluginMsgDefines.MSG_REQACC_RESULT_whatOTHERFAILURE:
+    		Toast.makeText(this, "RequestAccess failed. See logcat for details.", Toast.LENGTH_SHORT).show();
+    		break;
+    	case AntPluginMsgDefines.MSG_REQACC_RESULT_whatDEPENDENCYNOTINSTALLED:
+    		Toast.makeText(this, AntPlusControlsPcc.getMissingDependencyName() + " is not installed.", Toast.LENGTH_LONG).show();
+    		break;
+    	default:
+    		Toast.makeText(this, "Unrecognized result: " + resultCode, Toast.LENGTH_SHORT).show();
+    		break;
+    	}
+    }
+
+    /*
+     * (non-Javadoc)
+     * @see com.dsi.ant.plugins.AntPluginPcc.IDeviceStateChangeReceiver#onDeviceStateChange(int)
+     */
+	public void onDeviceStateChange(final int newDeviceState)
+	{
+	}
+
+    /*
+     * (non-Javadoc)
+     * @see com.dsi.ant.plugins.antplus.pcc.AntPlusControlsPcc.IAudioCommandReceiver#onNewAudioCommand(int, int, int, int, int)
+     */
+	public int onNewAudioCommand(final int currentMessageCount, final int serialNumber,
+			final int sequenceNumber, final int commandNumber, final int commandData)
+	{
+		String cmd = "";
+		
+		switch(commandNumber)
+		{
+		case AntPlusControlsPcc.AudioVideoCommandNumber.PLAY:
+			cmd = TOGGLEPAUSE_ACTION;
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.PAUSE:
+			cmd = PAUSE_ACTION;
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.STOP:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.VOLUME_UP:
+			mAudioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+					AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.VOLUME_DOWN:
+			mAudioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+					AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.MUTE_UNMUTE:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.AHEAD:
+			cmd = NEXT_ACTION;
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.BACK:
+			cmd = PREVIOUS_ACTION;
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.REPEAT_CURRENT_TRACK:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.REPEAT_ALL:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.REPEAT_OFF:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.SHUFFLE_TRACKS:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.SHUFFLE_ALBUMS:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.SHUFFLE_OFF:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.FAST_FORWARD:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.FAST_REWIND:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.CUSTOM_REPEAT:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.CUSTOM_SHUFFLE:
+			break;
+		case AntPlusControlsPcc.AudioVideoCommandNumber.RECORD:
+			break;
+		default: 
+			break;
+		}
+		
+		if (!cmd.isEmpty()) {
+			Intent intent = new Intent();
+			intent.setAction(cmd);
+			handleCommandIntent(intent);
+		}
+		return AntPlusControlsPcc.CommandStatus.PASS;
+	}
+
 
     /**
      * {@inheritDoc}
@@ -614,6 +772,12 @@ public class MusicPlaybackService extends Service {
         mAudioManager.abandonAudioFocus(mAudioFocusListener);
         mAudioManager.unregisterRemoteControlClient(mRemoteControlClient);
 
+        //Release ANT Client
+        if (mAntClient != null) {
+        	mAntClient.releaseAccess();
+        	mAntClient = null;
+        }
+        
         // Remove any callbacks from the handlers
         mDelayedStopHandler.removeCallbacksAndMessages(null);
         mPlayerHandler.removeCallbacksAndMessages(null);
@@ -667,6 +831,9 @@ public class MusicPlaybackService extends Service {
                             .setPlaybackState(RemoteControlClient.PLAYSTATE_STOPPED);
                     mAudioManager.unregisterRemoteControlClient(mRemoteControlClient);
                 }
+            } else if (SETUP_ANT.equals(action)) {
+            	mEnableAntRemote = intent.getBooleanExtra(SETUP_ANT, false);
+            	setupAntControlsClient();
             } else {
                 handleCommandIntent(intent);
             }

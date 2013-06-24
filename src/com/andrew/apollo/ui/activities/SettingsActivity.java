@@ -137,6 +137,8 @@ public class SettingsActivity extends PreferenceActivity {
     private void initData() {
         // Lockscreen controls
         toggleLockscreenControls();
+        //ANT+ Remote
+        toggleAntRemote();
     }
 
     /**
@@ -185,6 +187,24 @@ public class SettingsActivity extends PreferenceActivity {
                 updateLockscreen
                         .putExtra(MusicPlaybackService.UPDATE_LOCKSCREEN, (Boolean)newValue);
                 startService(updateLockscreen);
+                return true;
+            }
+        });
+    }
+    
+    /**
+     * Toggles the ANT+ Remote
+     */
+    private void toggleAntRemote() {
+        final CheckBoxPreference antRemote = (CheckBoxPreference)findPreference("ant_remote");
+        antRemote.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+            @Override
+            public boolean onPreferenceChange(final Preference preference, final Object newValue) {
+                // Let the service know
+                final Intent setupAnt = new Intent(SettingsActivity.this, MusicPlaybackService.class);
+                setupAnt.setAction(MusicPlaybackService.SETUP_ANT);
+                setupAnt.putExtra(MusicPlaybackService.SETUP_ANT, (Boolean)newValue);
+                startService(setupAnt);
                 return true;
             }
         });
